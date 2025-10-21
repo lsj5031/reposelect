@@ -30,8 +30,12 @@ npm link
 ## Usage
 
 ```bash
-# Basic usage
+# Basic usage (naive search)
 reposelect "How is JWT validation implemented?" --repo . --out context.xml
+
+# With LLM agent for intelligent selection
+reposelect "How is JWT validation implemented?" --agent factory --out context.xml
+reposelect "How is JWT validation implemented?" --agent opencode --out context.xml
 
 # With custom token budget
 reposelect "Database connection logic" --repo ./my-app --out db-context.xml --budget 8000
@@ -47,10 +51,12 @@ reposelect "Error handling patterns" --verbose
 - `--out, -o` - Output file (default: `context.xml`)
 - `--budget, -b` - Token budget limit (default: 12000)
 - `--verbose, -v` - Verbose output
+- `--agent` - Use LLM agent for intelligent file selection (`factory` or `opencode`)
 - `--help, -h` - Show help
 
 ## How it works
 
+### Default Mode (Naive Search)
 1. **Keyword extraction**: Pulls meaningful terms from your question
 2. **File discovery**: Uses `git ls-files` and `git grep` to find candidates
 3. **Scoring algorithm**: Ranks files by:
@@ -61,6 +67,17 @@ reposelect "Error handling patterns" --verbose
    - Size penalties
 4. **Selection**: Picks top files within token budget
 5. **Packing**: Pipes selected files to Repomix for final XML/MD output
+
+### Agent Mode (LLM-Powered)
+When using `--agent`, reposelect uses LLM agents for semantic understanding:
+
+1. **Agent Selection**: Choose between Factory Droid or OpenCode
+2. **Semantic Analysis**: LLM analyzes repository structure and your question
+3. **Intelligent Selection**: Files chosen based on semantic relationships, not just keywords
+4. **Reasoning**: Agent provides explanations for file selections
+5. **Fallback**: If agent fails, gracefully falls back to naive search
+
+Both modes respect your token budget and produce the same Repomix-compatible output.
 
 ## File Selection Heuristics
 
@@ -90,14 +107,20 @@ The output file contains:
 ## Examples
 
 ```bash
-# Find authentication-related files
+# Find authentication-related files (naive search)
 reposelect "How does authentication work?" --out auth-context.xml
 
-# Investigate database schema
-reposelect "Database models and migrations" --budget 15000 --verbose
+# Find authentication-related files (LLM agent)
+reposelect "How does authentication work?" --agent factory --out auth-context.xml
+
+# Investigate database schema with semantic understanding
+reposelect "Database models and migrations" --agent opencode --budget 15000 --verbose
 
 # API endpoint analysis  
 reposelect "REST API endpoints for user management" --repo ./backend
+
+# Complex architectural questions (better with agents)
+reposelect "How are microservices communicating in this system?" --agent factory
 ```
 
 ## Requirements
@@ -105,6 +128,10 @@ reposelect "REST API endpoints for user management" --repo ./backend
 - Node.js 16+
 - Git repository
 - Repomix (`npm install -g repomix`)
+
+### For Agent Mode (Optional)
+- **Factory Droid**: Install with `curl -fsSL https://app.factory.ai/cli | sh` and set `FACTORY_API_KEY`
+- **OpenCode**: Install from https://opencode.ai and configure with `opencode auth login`
 
 ## Similar Tools
 

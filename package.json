@@ -15,6 +15,7 @@
     "test:basic": "node tests/test-basic.js",
     "test:scoring": "node tests/test-scoring.js",
     "test:edge": "node tests/test-edge-cases.js",
+    "test:agent": "node tests/test-agent.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

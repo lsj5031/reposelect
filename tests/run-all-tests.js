@@ -28,7 +28,8 @@ function main() {
   const testFiles = [
     'test-basic.js',
     'test-scoring.js', 
-    'test-edge-cases.js'
+    'test-edge-cases.js',
+    'test-agent.js'
   ];
   
   let passed = 0;
