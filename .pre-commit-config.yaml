@@ -1,0 +1,11 @@
+repos:
+  - repo: local
+    hooks:
+      - id: oxlint
+        name: oxlint
+        entry: npx oxlint
+        language: system
+        types: [file]
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+        always_run: true

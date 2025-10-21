@@ -72,7 +72,7 @@ if (args.verbose) {
 function safeExec(cmd: string): string {
   try {
     return execSync(cmd, { cwd: repo, encoding: 'utf8' });
-  } catch (error) {
+  } catch {
     return '';
   }
 }
@@ -189,13 +189,7 @@ if (args.verbose) {
   console.log(`Found ${candidates.length} candidate files`);
 }
 
-// Score and rank files
-interface FileScore {
-  file: string;
-  score: number;
-  size: number;
-  tokens: number;
-}
+
 
 const ranked = candidates.map(file => {
   const nameHits = keywords.reduce((count, keyword) => 

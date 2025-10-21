@@ -99,10 +99,10 @@ echo "Building..."
 npm run build
 echo "Build complete!"
 `,
-    'data/large-config.json': JSON.stringify({
-      // Large JSON file
-      ...Object.fromEntries(Array.from({length: 100}, (_, i) => [`key${i}`, `value${i}`]))
-    }, null, 2)
+    'data/large-config.json': (() => {
+      const largeObj = Object.fromEntries(Array.from({length: 100}, (_, i) => [`key${i}`, `value${i}`]));
+      return JSON.stringify(largeObj, null, 2);
+    })()
   };
   
   for (const [filePath, content] of Object.entries(files)) {
