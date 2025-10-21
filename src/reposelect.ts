@@ -163,15 +163,19 @@ function tokenEstimate(chars: number): number {
 
 // Get all files, excluding common ignore patterns
 const allFiles = gitFiles().filter(file =>
-  !file.startsWith('node_modules/') &&
-  !file.startsWith('dist/') &&
-  !file.startsWith('build/') &&
-  !file.startsWith('.git/') &&
-  !file.startsWith('coverage/') &&
-  !file.startsWith('.next/') &&
-  !file.startsWith('.nuxt/') &&
+  !file.includes('node_modules/') &&
+  !file.includes('dist/') &&
+  !file.includes('build/') &&
+  !file.includes('.git/') &&
+  !file.includes('coverage/') &&
+  !file.includes('.next/') &&
+  !file.includes('.nuxt/') &&
+  !file.includes('.vscode/') &&
+  !file.includes('.idea/') &&
   !file.endsWith('.min.js') &&
-  !file.endsWith('.min.css')
+  !file.endsWith('.min.css') &&
+  !file.endsWith('.map') &&
+  !file.endsWith('.d.ts')
 );
 
 // Find candidate files

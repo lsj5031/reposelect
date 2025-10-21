@@ -1,0 +1,591 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where comments have been removed.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+- Pay special attention to the Repository Instruction. These contain important context and guidelines specific to this project.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Code comments have been removed from supported file types
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  reposelect.ts
+templates/
+  repomix-instruction.md
+package.json
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/reposelect.ts">
+#!/usr/bin/env node
+
+
+
+
+
+import { execSync, spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yargs from 'yargs';
+
+interface Args {
+  _: string[];
+  repo: string;
+  out: string;
+  budget: number;
+  verbose: boolean;
+}
+
+const args = yargs
+  .usage('Usage: reposelect <question> [options]')
+  .positional('question', {
+    describe: 'Question about the codebase',
+    type: 'string'
+  })
+  .option('repo', {
+    alias: 'r',
+    type: 'string',
+    default: process.cwd(),
+    describe: 'Repository path'
+  })
+  .option('out', {
+    alias: 'o',
+    type: 'string',
+    default: 'context.xml',
+    describe: 'Output file'
+  })
+  .option('budget', {
+    alias: 'b',
+    type: 'number',
+    default: 12000,
+    describe: 'Token budget limit'
+  })
+  .option('verbose', {
+    alias: 'v',
+    type: 'boolean',
+    default: false,
+    describe: 'Verbose output'
+  })
+  .help()
+  .argv as Args;
+
+const question = String(args._[0] ?? '');
+if (!question) {
+  console.error('Error: Provide a question about the codebase.');
+  process.exit(1);
+}
+
+const repo = path.resolve(args.repo);
+const out = path.resolve(args.out);
+
+// Extract keywords from question (3+ chars, alphanumeric + underscore)
+const keywords = Array.from(new Set(
+  (question.toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [])
+    .filter(w => !['the', 'and', 'for', 'are', 'with', 'not', 'you', 'all', 'can', 'has', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'had', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'].includes(w))
+));
+
+if (args.verbose) {
+  console.log(`Keywords: ${keywords.join(', ')}`);
+}
+
+function safeExec(cmd: string): string {
+  try {
+    return execSync(cmd, { cwd: repo, encoding: 'utf8' });
+  } catch (error) {
+    return '';
+  }
+}
+
+function gitFiles(): string[] {
+  const out = safeExec('git ls-files');
+  return out.split('\n').filter(Boolean);
+}
+
+function grepCandidates(): Set<string> {
+  if (!keywords.length) return new Set();
+  const pattern = keywords.map(k => `-e ${JSON.stringify(k)}`).join(' ');
+  const out = safeExec(`git grep -l -i ${pattern}`);
+  return new Set(out.split('\n').filter(Boolean));
+}
+
+function byName(files: string[]): Set<string> {
+  const selected = new Set<string>();
+  const regexes = keywords.map(k =>
+    new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+  );
+
+  for (const file of files) {
+    if (regexes.some(regex => regex.test(file))) {
+      selected.add(file);
+    }
+  }
+  return selected;
+}
+
+function mustInclude(files: string[]): Set<string> {
+  const patterns = [
+    /^README\.md$/i,
+    /^CHANGELOG/i,
+    /^LICENSE$/i,
+    /^docs\//i,
+    /^package\.json$/i,
+    /^pnpm-lock\.yaml$/i,
+    /^yarn\.lock$/i,
+    /^npm-lock\.json$/i,
+    /^requirements\.txt$/i,
+    /^pyproject\.toml$/i,
+    /^tsconfig.*\.json$/i,
+    /^\.eslintrc.*$/i,
+    /^\.prettierrc.*$/i,
+    /^Dockerfile/i,
+    /^Makefile$/i,
+    /.*\.env\.example$/i,
+    /^\.gitignore$/i,
+    /^\.env$/i
+  ];
+
+  return new Set(files.filter(file =>
+    patterns.some(pattern => pattern.test(file))
+  ));
+}
+
+function getFileSize(file: string): number {
+  try {
+    return fs.statSync(path.join(repo, file)).size;
+  } catch {
+    return 0;
+  }
+}
+
+function contentHits(file: string): number {
+  try {
+    const content = fs.readFileSync(path.join(repo, file), 'utf8').toLowerCase();
+    return keywords.reduce((count, keyword) =>
+      count + (content.includes(keyword) ? 1 : 0), 0
+    );
+  } catch {
+    return 0;
+  }
+}
+
+function lastCommitScore(file: string): number {
+  const timestamp = safeExec(`git log -1 --format=%ct -- ${JSON.stringify(file)}`).trim();
+  if (!timestamp) return 0;
+
+  const ageDays = (Date.now() / 1000 - parseInt(timestamp, 10)) / 86400;
+  return Math.max(0, Math.min(1, 1 - Math.log10(1 + ageDays) / 2));
+}
+
+function tokenEstimate(chars: number): number {
+  return Math.ceil(chars / 3.7);
+}
+
+
+const allFiles = gitFiles().filter(file =>
+  !file.includes('node_modules/') &&
+  !file.includes('dist/') &&
+  !file.includes('build/') &&
+  !file.includes('.git/') &&
+  !file.includes('coverage/') &&
+  !file.includes('.next/') &&
+  !file.includes('.nuxt/') &&
+  !file.includes('.vscode/') &&
+  !file.includes('.idea/') &&
+  !file.endsWith('.min.js') &&
+  !file.endsWith('.min.css') &&
+  !file.endsWith('.map') &&
+  !file.endsWith('.d.ts')
+);
+
+
+const candidates = Array.from(new Set([
+  ...byName(allFiles),
+  ...grepCandidates(),
+  ...mustInclude(allFiles)
+]));
+
+if (args.verbose) {
+  console.log(`Found ${candidates.length} candidate files`);
+}
+
+
+interface FileScore {
+  file: string;
+  score: number;
+  size: number;
+  tokens: number;
+}
+
+const ranked = candidates.map(file => {
+  const nameHits = keywords.reduce((count, keyword) =>
+    count + (file.toLowerCase().includes(keyword) ? 1 : 0), 0
+  );
+  const contentHitCount = contentHits(file);
+  const recency = lastCommitScore(file);
+  const size = getFileSize(file);
+  const sizePenalty = Math.log10(1 + size) / 10;
+
+  const extBonus = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rb', '.java', '.cs', '.md', '.json', '.toml', '.yaml', '.yml']
+    .includes(path.extname(file).toLowerCase()) ? 0.2 : 0;
+
+  const score = 3 * nameHits + 2 * contentHitCount + recency - 0.5 * sizePenalty + extBonus;
+  const tokens = tokenEstimate(size);
+
+  return { file, score, size, tokens };
+}).sort((a, b) => b.score - a.score);
+
+
+const selected: string[] = [];
+let usedTokens = 0;
+
+for (const { file, tokens } of ranked) {
+  if (usedTokens + tokens > args.budget && selected.length >= 8) break;
+  selected.push(file);
+  usedTokens += tokens;
+}
+
+if (selected.length === 0) {
+  console.error('Error: No relevant files found.');
+  process.exit(2);
+}
+
+if (args.verbose) {
+  console.log(`Selected ${selected.length} files (~${usedTokens} tokens)`);
+  console.log('Files:', selected.slice(0, 10).join(', '));
+  if (selected.length > 10) {
+    console.log(`... and ${selected.length - 10} more`);
+  }
+}
+
+
+const instructionFile = path.join(repo, 'repomix-instruction.md');
+if (!fs.existsSync(instructionFile)) {
+  fs.writeFileSync(instructionFile, `# Context & Rules
+
+## Repository Context
+This is a packed repository context for AI assistance. The files below represent the most relevant code for answering your question.
+
+## Guidelines
+- Only modify files listed in the <files> section
+- Follow existing code style and conventions
+- Make minimal, focused changes
+- Add tests where feasible
+- Respect existing linting and formatting rules
+- Consider the broader codebase impact
+
+## Question Context
+The original question was: "${question}"
+
+Focus your answer on addressing this specific question using the provided context.
+`);
+}
+
+
+const relativeOut = path.relative(repo, out);
+const repomixArgs = [
+  '--stdin',
+  '--style', 'xml',
+  '--remove-comments',
+  '--output', relativeOut,
+  '--instruction-file-path', 'repomix-instruction.md'
+];
+
+const result = spawnSync('repomix', repomixArgs, {
+  cwd: repo,
+  input: selected.join('\n') + '\n',
+  stdio: ['pipe', 'inherit', 'inherit']
+});
+
+if ((result.status ?? 0) !== 0) {
+  console.error('Error: Repomix failed. Make sure repomix is installed: npm install -g repomix');
+  process.exit(result.status ?? 1);
+}
+
+console.log(`✓ Packed ${selected.length} files (~${usedTokens} tokens) → ${out}`);
+</file>
+
+<file path="templates/repomix-instruction.md">
+# Context & Rules
+
+## Repository Context
+This is a packed repository context for AI assistance. The files below represent the most relevant code for answering your question.
+
+## Guidelines
+- Only modify files listed in the <files> section
+- Follow existing code style and conventions
+- Make minimal, focused changes
+- Add tests where feasible
+- Respect existing linting and formatting rules
+- Consider the broader codebase impact
+
+## Question Context
+The original question was: "{{QUESTION}}"
+
+Focus your answer on addressing this specific question using the provided context.
+
+## File Selection Notes
+Files were selected based on:
+- Keyword matching in filenames and content
+- Recency of changes
+- File type relevance
+- Token budget constraints
+
+## Output Format
+Provide clear, actionable answers with:
+- Direct responses to the question
+- Code examples where relevant
+- File references with line numbers when possible
+- Next steps or recommendations if applicable
+</file>
+
+<file path="package.json">
+{
+  "name": "reposelect",
+  "version": "1.0.0",
+  "description": "RepoPrompt-Lite: Smart file selection and packing for AI context",
+  "main": "dist/reposelect.js",
+  "bin": {
+    "reposelect": "bin/reposelect"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/reposelect.ts",
+    "start": "node dist/reposelect.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "context",
+    "repository",
+    "file-selection",
+    "repomix",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/yargs": "^17.0.32",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
+</file>
+
+<file path="README.md">
+# reposelect
+
+**RepoPrompt-Lite**: Smart file selection and packing for AI context
+
+`reposelect` is a minimal CLI tool that intelligently selects the most relevant files from your repository based on a natural language question, then packs them into a single AI-friendly file using Repomix.
+
+## Why?
+
+Instead of dumping your entire repository into an AI context (wasting tokens and overwhelming the model), `reposelect`:
+
+- **Selects precisely**: Uses heuristics to find files relevant to your question
+- **Respects budgets**: Stays within token limits while maintaining context quality  
+- **Works anywhere**: CLI-only, no GUI required
+- **Leverages existing tools**: Uses Git for file discovery and Repomix for packing
+
+## Installation
+
+```bash
+# Install dependencies
+npm install -g repomix
+
+# Clone and install reposelect
+git clone <repo-url>
+cd reposelect
+npm install
+npm run build
+npm link
+```
+
+## Usage
+
+```bash
+# Basic usage
+reposelect "How is JWT validation implemented?" --repo . --out context.xml
+
+# With custom token budget
+reposelect "Database connection logic" --repo ./my-app --out db-context.xml --budget 8000
+
+# Verbose output
+reposelect "Error handling patterns" --verbose
+```
+
+## Options
+
+- `question` - Your question about the codebase (required)
+- `--repo, -r` - Repository path (default: current directory)
+- `--out, -o` - Output file (default: `context.xml`)
+- `--budget, -b` - Token budget limit (default: 12000)
+- `--verbose, -v` - Verbose output
+- `--help, -h` - Show help
+
+## How it works
+
+1. **Keyword extraction**: Pulls meaningful terms from your question
+2. **File discovery**: Uses `git ls-files` and `git grep` to find candidates
+3. **Scoring algorithm**: Ranks files by:
+   - Filename keyword matches (3x weight)
+   - Content keyword matches (2x weight) 
+   - Recency of changes
+   - File type relevance
+   - Size penalties
+4. **Selection**: Picks top files within token budget
+5. **Packing**: Pipes selected files to Repomix for final XML/MD output
+
+## File Selection Heuristics
+
+`reposelect` prioritizes files that:
+
+- Match keywords in their filename or path
+- Contain keywords in their content
+- Were recently modified
+- Are relevant file types (.ts, .js, .py, .md, .json, etc.)
+- Are part of essential project files (README, package.json, configs)
+
+Always includes:
+- README files
+- Package/dependency files
+- Configuration files
+- Documentation
+
+## Output
+
+The output file contains:
+
+- File summary and directory tree
+- Selected file contents with syntax highlighting
+- Instruction template for AI context
+- Token count and metadata
+
+## Examples
+
+```bash
+# Find authentication-related files
+reposelect "How does authentication work?" --out auth-context.xml
+
+# Investigate database schema
+reposelect "Database models and migrations" --budget 15000 --verbose
+
+# API endpoint analysis  
+reposelect "REST API endpoints for user management" --repo ./backend
+```
+
+## Requirements
+
+- Node.js 16+
+- Git repository
+- Repomix (`npm install -g repomix`)
+
+## Similar Tools
+
+- [RepoPrompt](https://repoprompt.com) - Full-featured GUI + MCP server
+- [Repomix](https://github.com/yamadashy/repomix) - Repository packing tool
+
+## License
+
+MIT
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
+</file>
+
+</files>
+
+
+
+<instruction>
+# Context & Rules
+
+## Repository Context
+This is a packed repository context for AI assistance. The files below represent the most relevant code for answering your question.
+
+## Guidelines
+- Only modify files listed in the <files> section
+- Follow existing code style and conventions
+- Make minimal, focused changes
+- Add tests where feasible
+- Respect existing linting and formatting rules
+- Consider the broader codebase impact
+
+## Question Context
+The original question was: "How does the CLI argument parsing work?"
+
+Focus your answer on addressing this specific question using the provided context.
+
+</instruction>

@@ -10,6 +10,10 @@
     "build": "tsc",
     "dev": "ts-node src/reposelect.ts",
     "start": "node dist/reposelect.js",
+    "test": "node tests/run-all-tests.js",
+    "test:basic": "node tests/test-basic.js",
+    "test:scoring": "node tests/test-scoring.js",
+    "test:edge": "node tests/test-edge-cases.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
