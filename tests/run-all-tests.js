@@ -26,9 +26,7 @@ function main() {
   console.log('========================\n');
   
   const testFiles = [
-    'test-basic.js',
-    'test-scoring.js', 
-    'test-edge-cases.js',
+    'unit/test-scorer.js',
     'test-agent.js'
   ];
   
