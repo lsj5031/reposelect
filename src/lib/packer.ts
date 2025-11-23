@@ -73,7 +73,7 @@ Focus your answer on addressing this specific question using the provided contex
   /**
    * Pack files using Repomix
    */
-  async pack(files: string[], question: string): Promise<void> {
+  async pack(files: string[], question: string, format: 'xml' | 'markdown' | 'json' = 'xml'): Promise<void> {
     const usedTokens = this.calculateTotalTokens(files);
 
     if (this.verbose) {
@@ -91,7 +91,7 @@ Focus your answer on addressing this specific question using the provided contex
     const relativeOut = path.relative(this.repoPath, this.outputPath);
     const repomixArgs = [
       '--stdin',
-      '--style', 'xml',
+      '--style', format,
       '--remove-comments',
       '--output', relativeOut,
       '--instruction-file-path', 'repomix-instruction.md'

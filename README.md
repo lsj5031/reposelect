@@ -1,22 +1,22 @@
-# reposelect
+# reposelect v2 — Agent-Only Context
 
-**RepoPrompt-Lite**: Smart file selection and packing for AI context
+**No fallbacks. No grep. Only intelligence.**
 
-`reposelect` is a minimal CLI tool that intelligently selects the most relevant files from your repository based on a natural language question, then packs them into a single AI-friendly file using Repomix.
+`reposelect` is an intelligent CLI tool that uses LLM agents to select the most relevant files from your repository based on a natural language question, then packs them into a single AI-friendly file using Repomix.
 
 ## Why?
 
 Instead of dumping your entire repository into an AI context (wasting tokens and overwhelming the model), `reposelect`:
 
-- **Selects precisely**: Uses heuristics to find files relevant to your question
+- **Refuses to guess**: Uses only real LLM agents for file selection—no naive scoring fallback
 - **Respects budgets**: Stays within token limits while maintaining context quality  
 - **Works anywhere**: CLI-only, no GUI required
-- **Leverages existing tools**: Uses Git for file discovery and Repomix for packing
+- **Leverages existing tools**: Uses Repomix for output packing
 
 ## Installation
 
 ```bash
-# Install dependencies
+# Install Repomix (required for packing)
 npm install -g repomix
 
 # Clone and install reposelect
@@ -30,18 +30,21 @@ npm link
 ## Usage
 
 ```bash
-# Basic usage (naive search)
-reposelect "How is JWT validation implemented?" --repo . --out context.xml
+# Auto-pick best available agent (factory → opencode)
+reposelect "How does authentication work?" --smart
 
-# With LLM agent for intelligent selection
-reposelect "How is JWT validation implemented?" --agent factory --out context.xml
-reposelect "How is JWT validation implemented?" --agent opencode --out context.xml
+# Specify an agent
+reposelect "How does authentication work?" --agent factory
+reposelect "How does authentication work?" --agent opencode
 
 # With custom token budget
 reposelect "Database connection logic" --repo ./my-app --out db-context.xml --budget 8000
 
-# Verbose output
-reposelect "Error handling patterns" --verbose
+# Preview what agent selected (dry run)
+reposelect "Error handling patterns" --dry-run --top 20
+
+# Different output format
+reposelect "API endpoints" --format markdown --out api.md
 ```
 
 ## Options
@@ -51,49 +54,22 @@ reposelect "Error handling patterns" --verbose
 - `--out, -o` - Output file (default: `context.xml`)
 - `--budget, -b` - Token budget limit (default: 12000)
 - `--verbose, -v` - Verbose output
-- `--agent` - Use LLM agent for intelligent file selection (`factory` or `opencode`)
+- `--agent` - Force specific agent: `factory` or `opencode`
+- `--smart` - Auto-pick best available agent (tries factory first, then opencode)
+- `--dry-run` - Preview file selection without packing
+- `--top N` - Show top N files in dry-run (default: 20)
+- `--format, -f` - Output format: `xml`, `markdown`, or `json` (default: `xml`)
 - `--help, -h` - Show help
 
 ## How it works
 
-### Default Mode (Naive Search)
-1. **Keyword extraction**: Pulls meaningful terms from your question
-2. **File discovery**: Uses `git ls-files` and `git grep` to find candidates
-3. **Scoring algorithm**: Ranks files by:
-   - Filename keyword matches (3x weight)
-   - Content keyword matches (2x weight) 
-   - Recency of changes
-   - File type relevance
-   - Size penalties
-4. **Selection**: Picks top files within token budget
-5. **Packing**: Pipes selected files to Repomix for final XML/MD output
-
-### Agent Mode (LLM-Powered)
-When using `--agent`, reposelect uses LLM agents for semantic understanding:
-
-1. **Agent Selection**: Choose between Factory Droid or OpenCode
+1. **Agent Selection**: Choose between Factory Droid or OpenCode (or let `--smart` pick)
 2. **Semantic Analysis**: LLM analyzes repository structure and your question
-3. **Intelligent Selection**: Files chosen based on semantic relationships, not just keywords
-4. **Reasoning**: Agent provides explanations for file selections
-5. **Fallback**: If agent fails, gracefully falls back to naive search
+3. **Intelligent Selection**: Files chosen based on semantic relationships, not keywords
+4. **Reasoning**: Agent provides explanations for selections
+5. **Packing**: Selected files are packed using Repomix in your chosen format
 
-Both modes respect your token budget and produce the same Repomix-compatible output.
-
-## File Selection Heuristics
-
-`reposelect` prioritizes files that:
-
-- Match keywords in their filename or path
-- Contain keywords in their content
-- Were recently modified
-- Are relevant file types (.ts, .js, .py, .md, .json, etc.)
-- Are part of essential project files (README, package.json, configs)
-
-Always includes:
-- README files
-- Package/dependency files
-- Configuration files
-- Documentation
+If both agents fail or are unavailable, `reposelect` exits with a clear error message and installation instructions.
 
 ## Output
 
@@ -107,20 +83,17 @@ The output file contains:
 ## Examples
 
 ```bash
-# Find authentication-related files (naive search)
-reposelect "How does authentication work?" --out auth-context.xml
+# Authentication analysis with auto-selection
+reposelect "How does authentication work?" --smart --out auth-context.xml
 
-# Find authentication-related files (LLM agent)
-reposelect "How does authentication work?" --agent factory --out auth-context.xml
+# Database investigation with specific agent
+reposelect "Database models and migrations" --agent factory --budget 15000 --verbose
 
-# Investigate database schema with semantic understanding
-reposelect "Database models and migrations" --agent opencode --budget 15000 --verbose
+# API endpoint analysis with markdown output
+reposelect "REST API endpoints for user management" --format markdown
 
-# API endpoint analysis  
-reposelect "REST API endpoints for user management" --repo ./backend
-
-# Complex architectural questions (better with agents)
-reposelect "How are microservices communicating in this system?" --agent factory
+# Preview before packing
+reposelect "Microservice communication" --dry-run --top 10
 ```
 
 ## Requirements
@@ -129,9 +102,22 @@ reposelect "How are microservices communicating in this system?" --agent factory
 - Git repository
 - Repomix (`npm install -g repomix`)
 
-### For Agent Mode (Optional)
+### LLM Agents (at least one required)
+
 - **Factory Droid**: Install with `curl -fsSL https://app.factory.ai/cli | sh` and set `FACTORY_API_KEY`
-- **OpenCode**: Install from https://opencode.ai and configure with `opencode auth login`
+- **OpenCode**: Install from https://opencode.ai and authenticate with `opencode auth login`
+
+## Philosophy
+
+`reposelect v2` refuses to be a low-signal tool. If no agent can analyze your codebase:
+
+- It won't fall back to naive keyword matching
+- It won't guess based on filenames
+- It will fail loudly with helpful error messages
+
+This ensures the context you get is **always high-quality and semantically sound**.
+
+It's like how `eslint --fix` refuses to run without a config—intentional design, not a limitation.
 
 ## Similar Tools
 

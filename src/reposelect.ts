@@ -1,19 +1,10 @@
 #!/usr/bin/env node
-/**
- * reposelect.ts – minimal "RepoPrompt-Lite"
- * Usage:
- *   reposelect "How is JWT validated?" --repo . --out context.xml
- */
-import * as fs from 'fs';
 import * as path from 'path';
 import * as yargs from 'yargs';
 import { FactoryAgent } from './agent/factory-agent';
 import { OpenCodeAgent } from './agent/opencode-agent';
-import { FileScanner } from './lib/scanner';
-import { FileScorer } from './lib/scorer';
 import { Packer } from './lib/packer';
-import { KeywordExtractor, FileSelector } from './lib/keywords';
-import { DEFAULT_BUDGET, MIN_SELECTED_FILES } from './lib/config';
+import { DEFAULT_BUDGET } from './lib/config';
 
 interface Args {
   _: string[];
@@ -21,179 +12,101 @@ interface Args {
   out: string;
   budget: number;
   verbose: boolean;
-  agent?: string;
+  agent?: 'factory' | 'opencode';
+  smart: boolean;
+  'dry-run': boolean;
+  top?: number;
+  format: 'xml' | 'markdown' | 'json';
 }
 
 const args = yargs
   .usage('Usage: reposelect <question> [options]')
-  .positional('question', {
-    describe: 'Question about the codebase',
-    type: 'string'
-  })
-  .option('repo', {
-    alias: 'r',
-    type: 'string',
-    default: process.cwd(),
-    describe: 'Repository path'
-  })
-  .option('out', {
-    alias: 'o',
-    type: 'string',
-    default: 'context.xml',
-    describe: 'Output file'
-  })
-  .option('budget', {
-    alias: 'b',
-    type: 'number',
-    default: DEFAULT_BUDGET,
-    describe: 'Token budget limit'
-  })
-  .option('verbose', {
-    alias: 'v',
-    type: 'boolean',
-    default: false,
-    describe: 'Verbose output'
-  })
-  .option('agent', {
-    type: 'string',
-    choices: ['factory', 'opencode'],
-    describe: 'Use LLM agent for intelligent file selection'
-  })
+  .demandCommand(1)
+  .option('repo', { alias: 'r', type: 'string', default: process.cwd() })
+  .option('out', { alias: 'o', type: 'string', default: 'context.xml' })
+  .option('budget', { alias: 'b', type: 'number', default: DEFAULT_BUDGET })
+  .option('verbose', { alias: 'v', type: 'boolean', default: false })
+  .option('agent', { choices: ['factory', 'opencode'] })
+  .option('smart', { type: 'boolean', describe: 'Auto-pick best available agent' })
+  .option('dry-run', { type: 'boolean', describe: 'Show what agent selected' })
+  .option('top', { type: 'number', describe: 'Limit dry-run preview' })
+  .option('format', { alias: 'f', choices: ['xml', 'markdown', 'json'], default: 'xml' })
   .help()
   .argv as Args;
 
-const question = String(args._[0] ?? '');
-if (!question) {
-  console.error('Error: Provide a question about the codebase.');
-  process.exit(1);
-}
-
+const question = String(args._[0]);
 const repo = path.resolve(args.repo);
 const out = path.resolve(args.out);
 
-// Extract keywords from question
-const keywords = KeywordExtractor.extract(question);
-
-if (args.verbose) {
-  console.log(`Keywords: ${keywords.join(', ')}`);
-}
-
-async function tryAgentSelection(): Promise<boolean> {
-  if (!args.agent) return false;
-
-  try {
-    const agentConfig = {
-      repoPath: repo,
-      question: question,
-      tokenBudget: args.budget,
-      verbose: args.verbose
-    };
-
-    let agent;
-    if (args.agent === 'factory') {
-      agent = new FactoryAgent(agentConfig);
-    } else if (args.agent === 'opencode') {
-      agent = new OpenCodeAgent(agentConfig);
-    } else {
-      console.error(`Error: Agent '${args.agent}' not supported`);
-      return false;
-    }
-
-    const result = await agent.selectFiles();
-    
-    if (args.verbose) {
-      console.log(`Agent selected ${result.files.length} files`);
-      console.log(`Reasoning: ${result.reasoning}`);
-      console.log(`Confidence: ${result.confidence}`);
-    }
-
-    // Validate selected files exist
-    const validFiles = result.files.filter(file => {
-      const fullPath = path.join(repo, file);
-      return fs.existsSync(fullPath);
-    });
-
-    if (validFiles.length === 0) {
-      console.error('Error: Agent selected no valid files. Falling back to naive search.');
-      return false;
-    }
-
-    // Use agent-selected files
-    const packer = new Packer({
-      repoPath: repo,
-      outputPath: out,
-      verbose: args.verbose
-    });
-    
-    await packer.pack(validFiles, question);
-    return true;
-  } catch (error) {
-    console.error(`Agent failed: ${error instanceof Error ? error.message : String(error)}`);
-    console.error('Falling back to naive search...');
-    return false;
-  }
-}
-
-// Initialize scanner and scorer
-const scanner = new FileScanner({
-  repoPath: repo,
-  verbose: args.verbose
-});
-
-const scorer = new FileScorer({
-  keywords,
-  scanner
-});
-
-async function main() {
-  // Try agent selection first if requested
-  if (await tryAgentSelection()) {
-    return; // Agent succeeded and packed the files
-  }
-
-  // Get all files (filtered by scanner)
-  const allFiles = scanner.getAllFiles();
-
-  // Find candidate files by various criteria
-  const candidates = Array.from(new Set([
-    ...FileSelector.byName(allFiles, keywords),
-    ...scanner.grepFiles(keywords),
-    ...FileSelector.mustInclude(allFiles)
-  ]));
-
-  if (args.verbose) {
-    console.log(`Found ${candidates.length} candidate files`);
-  }
-
-  // Rank candidates by score
-  const ranked = scorer.scoreMany(candidates);
-
-  // Select files within token budget
-  const selected: string[] = [];
-  let usedTokens = 0;
-
-  for (const { file, tokens } of ranked) {
-    if (usedTokens + tokens > args.budget && selected.length >= MIN_SELECTED_FILES) break;
-    selected.push(file);
-    usedTokens += tokens;
-  }
-
-  if (selected.length === 0) {
-    console.error('Error: No relevant files found.');
-    process.exit(2);
-  }
-
-  // Pack files using Repomix
-  const packer = new Packer({
+async function run() {
+  const agentConfig = {
     repoPath: repo,
-    outputPath: out,
+    question,
+    tokenBudget: args.budget,
     verbose: args.verbose
-  });
-  
-  await packer.pack(selected, question);
+  };
+
+  const agentsToTry = args.smart || !args.agent
+    ? ['factory', 'opencode']
+    : [args.agent!];
+
+  let selectedFiles: string[] | null = null;
+  let reasoning = '';
+  let source = '';
+
+  for (const agentName of agentsToTry) {
+    let agent;
+    if (agentName === 'factory') {
+      agent = new FactoryAgent(agentConfig);
+    } else {
+      agent = new OpenCodeAgent(agentConfig);
+    }
+
+    try {
+      if (args.verbose) {
+        console.log(`Trying ${agentName} agent...`);
+      }
+      const result = await agent.selectFiles();
+
+      selectedFiles = result.files;
+      reasoning = result.reasoning || '';
+      source = agentName;
+
+      console.log(`${agentName} succeeded → ${selectedFiles.length} files (confidence: ${result.confidence?.toFixed(2) || 'N/A'})`);
+      break;
+    } catch (err) {
+      if (args.verbose) {
+        console.log(`${agentName} unavailable or failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
+  if (!selectedFiles || selectedFiles.length === 0) {
+    console.error('\nNo agent could select files.');
+    console.error('Available agents: factory, opencode');
+    console.error('\nInstall agents with:');
+    console.error('   Factory → curl -fsSL https://app.factory.ai/cli | sh');
+    console.error('   OpenCode → https://opencode.ai');
+    process.exit(1);
+  }
+
+  if (args['dry-run']) {
+    console.log(`\nTop ${args.top || 20} files selected by ${source}:\n`);
+    selectedFiles.slice(0, args.top || 20).forEach((f, i) => {
+      console.log(`${(i+1).toString().padStart(2)}. ${f}`);
+    });
+    if (selectedFiles.length > (args.top || 20)) {
+      console.log(`... and ${selectedFiles.length - (args.top || 20)} more`);
+    }
+    console.log(`\nReasoning: ${reasoning}`);
+    process.exit(0);
+  }
+
+  const packer = new Packer({ repoPath: repo, outputPath: out, verbose: args.verbose });
+  await packer.pack(selectedFiles, question, args.format);
 }
 
-main().catch(error => {
-  console.error('Error:', error instanceof Error ? error.message : String(error));
+run().catch(err => {
+  console.error('Fatal error:', err);
   process.exit(1);
 });
