@@ -13,8 +13,9 @@ export class OpenCodeAgent extends BaseAgent {
     const prompt = this.buildPrompt();
     this.log(`Sending prompt to OpenCode: ${prompt.substring(0, 100)}...`);
 
-    // Execute OpenCode with specialized prompt
-    const cmd = `opencode run "${prompt.replace(/"/g, '\\"')}"`;
+    // Execute OpenCode with specialized prompt and optional model
+    const modelFlag = this.config.model ? `--model ${this.config.model}` : '';
+    const cmd = `opencode run ${modelFlag} "${prompt.replace(/"/g, '\\"')}"`;
     const result = this.safeExec(cmd);
 
     if (result.status !== 0) {

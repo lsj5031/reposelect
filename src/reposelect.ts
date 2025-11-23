@@ -17,6 +17,7 @@ interface Args {
   'dry-run': boolean;
   top?: number;
   format: 'xml' | 'markdown' | 'json';
+  model?: string;
 }
 
 const args = yargs
@@ -26,8 +27,9 @@ const args = yargs
   .option('out', { alias: 'o', type: 'string', default: 'context.xml' })
   .option('budget', { alias: 'b', type: 'number', default: DEFAULT_BUDGET })
   .option('verbose', { alias: 'v', type: 'boolean', default: false })
-  .option('agent', { choices: ['factory', 'opencode'] })
-  .option('smart', { type: 'boolean', describe: 'Auto-pick best available agent' })
+  .option('agent', { choices: ['factory', 'opencode'], default: 'opencode' })
+  .option('smart', { type: 'boolean', describe: 'Auto-pick best available agent (opencode → factory)' })
+  .option('model', { type: 'string', describe: 'Model to use for agent (e.g., big-pickle)' })
   .option('dry-run', { type: 'boolean', describe: 'Show what agent selected' })
   .option('top', { type: 'number', describe: 'Limit dry-run preview' })
   .option('format', { alias: 'f', choices: ['xml', 'markdown', 'json'], default: 'xml' })
@@ -43,11 +45,12 @@ async function run() {
     repoPath: repo,
     question,
     tokenBudget: args.budget,
-    verbose: args.verbose
+    verbose: args.verbose,
+    model: args.model
   };
 
-  const agentsToTry = args.smart || !args.agent
-    ? ['factory', 'opencode']
+  const agentsToTry = args.smart
+    ? ['opencode', 'factory']
     : [args.agent!];
 
   let selectedFiles: string[] | null = null;

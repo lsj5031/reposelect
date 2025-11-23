@@ -12,6 +12,7 @@ export interface AgentConfig {
   question: string;
   tokenBudget: number;
   verbose: boolean;
+  model?: string;
 }
 
 export abstract class BaseAgent {
