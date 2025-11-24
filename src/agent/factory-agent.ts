@@ -19,7 +19,9 @@ export class FactoryAgent extends BaseAgent {
     this.log(`Sending prompt to Factory: ${prompt.substring(0, 100)}...`);
 
     // Execute Factory Droid in read-only mode with JSON output and optional model
-    const modelFlag = this.config.model ? `--model ${this.config.model}` : '';
+    // Note: Factory uses different model names (e.g., gpt-5-codex, claude-sonnet-4)
+    // not opencode format, so we only apply --model if explicitly set
+    const modelFlag = this.config.model && !this.config.model.includes('/') ? `-m ${this.config.model}` : '';
     const cmd = `droid exec --output-format json ${modelFlag} "${prompt.replace(/"/g, '\\"')}"`;
     const result = this.safeExec(cmd);
 
